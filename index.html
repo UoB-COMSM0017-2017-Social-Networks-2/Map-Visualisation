@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<meta charset="utf-8">
+<head>
+  <title>A D3 map</title>
+  <script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+  <script src="http://d3js.org/queue.v1.min.js"></script>
+  <script src="http://d3js.org/topojson.v1.min.js"></script>
+</head>
+
+<style>
+
+.background {
+  fill: #038;
+  pointer-events: all;
+}
+
+.feature {
+  cursor: pointer;
+}
+
+.feature.active {
+  fill-opacity: 0.9;
+  stroke: #fff;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.feature:hover {
+  stroke: #fff;
+}
+
+.mesh {
+  fill: none;
+  stroke: #fff;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+</style>
+
+<body>
+  <div class="tooltip_div"></div>
+    <script type="text/javascript">
+var tooltip = d3.select("body")
+	.append("div")
+	.style("position", "absolute")
+	.style("z-index", "10")
+	.style("visibility", "hidden");
+	
+var width = 900,
+    height = 600,
+    active = d3.select(null);
+
+// Create the albers projection (to center the UK map correctly)
+var albersProjection = d3.geo.albers()
+    .center([0, 55.4])
+    .rotate([4.4, 0])
+    .parallels([50, 60])
+    .scale(2800)
+    .translate([width / 2, height / 2]);
+
+// Add zoom functionality
+var zoom = d3.behavior.zoom()
+    .translate([0, 0])
+    .scale(1)
+    .scaleExtent([1, 8])
+    .on("zoom", zoomed);	
+	
+// Create a function geoPath - it takes a GeoJSON feature and returns SVG path data (an SVG path string is basically a free-form shape)
+var geoPath = d3.geo.path()
+    .projection(albersProjection);
+
+// Create an SVG element in which the map will go - select the body and append an svg to it
+var svg = d3.select("body")
+	.append("svg")
+    .attr("width", width)
+    .attr("height", height)
+    .on("click", stopped, true);
+
+// Create a rectangle element behind the map to allow resetting the map
+svg.append("rect")
+    .attr("class", "background")
+    .attr("width", width)
+    .attr("height", height)
+    .on("click", reset);
+	
+// Create a group
+var g = svg.append( "g" );
+
+svg
+    .call(zoom) // delete this line to disable free zooming
+    .call(zoom.event);
+
+// Display the map	
+
+var color = d3.scale.threshold()
+    .domain([-0.66, -0.33, 0, 0.33, 0.66, 1])
+    .range(["#FF0000", "#FF5500", "#FFAA00", "#FFFF00", "#CCFF00", "#88FF00", "#00FF00"]);
+
+queue()
+  .defer(d3.json, "GBR_adm2geo.json")
+  .defer(d3.csv, "MapData.csv")
+  .await(ready);
+  
+function ready(error, UK_json, MapData) {
+  if (error) throw error;
+  
+  var rateById = {};
+
+  MapData.forEach(function(d) { rateById[d.id] = +d.sentiment; });
+
+  g.selectAll( "path" ) // Select all SVG path elements - everything in the chain below happens to the elements. Since the elements don't exist, they are created on the fly.
+  .data( UK_json.features ) // Binds the data to the page elements 
+  .enter() // Creates a new element
+  .append( "path" )
+  .attr( "d", geoPath ) // For SVGs - d defines the coordinates of a path, geoPath is a function
+  .attr("class", "feature")
+  .attr("fill", function(d,i) { return color(rateById[i+1]); })
+  .on("click", clicked)
+  .on("mouseover", function(d,i){return mouseover(UK_json.features[i].properties.NAME_2 + ": " + rateById[i+1]);})
+  .on("mousemove", function(){return tooltip.style("top", (d3.event.pageY-10)+"px").style("left",(d3.event.pageX+10)+"px");}) // Position of the tooltip
+  .on("mouseout", function(){return tooltip.style("visibility", "hidden");});
+
+  g.append("path")
+  .datum(UK_json.features)
+  .attr("class", "mesh")
+  .attr("d", geoPath)
+	  
+};
+
+function mouseover(name){
+  return tooltip.style("visibility", "visible"), tooltip.text(name);
+}
+
+
+// Zoom on click
+function clicked(d) {
+  if (active.node() === this) return reset();
+  active.classed("active", false);
+  active = d3.select(this).classed("active", true);
+
+  var bounds = geoPath.bounds(d),
+	  dx = bounds[1][0] - bounds[0][0],
+	  dy = bounds[1][1] - bounds[0][1],
+	  x = (bounds[0][0] + bounds[1][0]) / 2,
+	  y = (bounds[0][1] + bounds[1][1]) / 2,
+	  scale = Math.max(1, Math.min(8, 0.9 / Math.max(dx / width, dy / height))),
+	  translate = [width / 2 - scale * x, height / 2 - scale * y];
+
+  svg.transition()
+	  .duration(750)
+	  .call(zoom.translate(translate).scale(scale).event);
+}
+
+// To reset the map to fullscreen
+function reset() {
+  active.classed("active", false);
+  active = d3.select(null);
+
+  svg.transition()
+	  .duration(750)
+	  .call(zoom.translate([0, 0]).scale(1).event);
+}
+
+function zoomed() {
+  g.style("stroke-width", 1.5 / d3.event.scale + "px");
+  g.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+}
+
+// If the drag behavior prevents the default click,
+// also stop propagation so we don’t click-to-zoom.
+function stopped() {
+  if (d3.event.defaultPrevented) d3.event.stopPropagation();
+}
+
+  </script>
+</body>
+</html>
