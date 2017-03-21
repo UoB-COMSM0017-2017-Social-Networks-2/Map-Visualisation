@@ -2,178 +2,245 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <meta charset="utf-8">
 <head>
-  <title>A D3 map</title>
+  <title>UK Twitter Visualisation</title>
+  <!-- Load Bootstrap -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <!-- Load D3 -->
   <script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
   <script src="http://d3js.org/queue.v1.min.js"></script>
   <script src="http://d3js.org/topojson.v1.min.js"></script>
+  <style>
+  html, body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* Bootstrap Layout*/
+  .visualisation {
+  
+    width: 100%; /* Set width to 100% */
+    margin-left: 100px;
+    margin-bottom: 50px;
+    
+    display: block;
+  }
+  
+  /* D3 Visualisation */
+  .background {
+    fill: #038;
+    pointer-events: all;
+  }
+
+  .feature {
+    cursor: pointer;
+  }
+
+  .feature.active {
+    fill-opacity: 0.9;
+    stroke: #fff;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .feature:hover {
+    stroke: #fff;
+  }
+  
+  footer p{
+    width: 100%;
+    margin: 0;
+   }
+
+  </style>
 </head>
-
-<style>
-
-.background {
-  fill: #038;
-  pointer-events: all;
-}
-
-.feature {
-  cursor: pointer;
-}
-
-.feature.active {
-  fill-opacity: 0.9;
-  stroke: #fff;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.feature:hover {
-  stroke: #fff;
-}
-
-.mesh {
-  fill: none;
-  stroke: #fff;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-</style>
-
 <body>
-  <div class="tooltip_div"></div>
+
+<nav class="navbar navbar-inverse navbar-fixed-top">
+  <div class="container-fluid">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#myNavbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>                        
+      </button>
+      <a class="navbar-brand" href="#">Logo</a>
+    </div>
+    <div class="collapse navbar-collapse" id="myNavbar">
+      <ul class="nav navbar-nav navbar-right">
+        <li class="active"><a href="#">Home</a></li>
+        <li><a href="#">About</a></li>
+        <li><a href="#">Projects</a></li>
+        <li><a href="#">Contact</a></li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        <li><a href="#"><span class="glyphicon glyphicon-log-in"></span> Login</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="visualisation">
+  <div class="container">
     <script type="text/javascript">
-var tooltip = d3.select("body")
-	.append("div")
-	.style("position", "absolute")
-	.style("z-index", "10")
-	.style("visibility", "hidden");
-	
-var width = 900,
-    height = 600,
-    active = d3.select(null);
 
-// Create the albers projection (to center the UK map correctly)
-var albersProjection = d3.geo.albers()
-    .center([0, 55.4])
-    .rotate([4.4, 0])
-    .parallels([50, 60])
-    .scale(2800)
-    .translate([width / 2, height / 2]);
+    var width = 1370,
+        height = 580;
 
-// Add zoom functionality
-var zoom = d3.behavior.zoom()
-    .translate([0, 0])
-    .scale(1)
-    .scaleExtent([1, 8])
-    .on("zoom", zoomed);	
-	
-// Create a function geoPath - it takes a GeoJSON feature and returns SVG path data (an SVG path string is basically a free-form shape)
-var geoPath = d3.geo.path()
-    .projection(albersProjection);
+    // Create an SVG element in which the map/everything will go - select the body and append an svg to it
+    var svg = d3.select("body")
+      .append("svg")
+      .attr("preserveAspectRatio", "xMinYMax meet")
+      .attr("viewBox", "0 0 " + width + " " + height)
+      .classed("svg-content-responsive", true) // Responsive to window sizing
+      .on("click", stopped, true);
+        
+        
+    mapInit();
+    topicsInit();
 
-// Create an SVG element in which the map will go - select the body and append an svg to it
-var svg = d3.select("body")
-	.append("svg")
-    .attr("width", width)
-    .attr("height", height)
-    .on("click", stopped, true);
+    
+    <!-- Function definition -->
+    
+    // If the drag behavior prevents the default click,
+    // also stop propagation so we don’t click-to-zoom.
+    function stopped() {
+      if (d3.event.defaultPrevented) d3.event.stopPropagation();
+    }
 
-// Create a rectangle element behind the map to allow resetting the map
-svg.append("rect")
-    .attr("class", "background")
-    .attr("width", width)
-    .attr("height", height)
-    .on("click", reset);
-	
-// Create a group
-var g = svg.append( "g" );
+    function mapInit(){
+        active = d3.select(null);
+        
+    // Create a rectangle element behind the map to allow resetting the map
+      svg.append("rect")
+        .attr("class", "background")
+        .attr("width", "100%")
+        .attr("height", "100%")
+        .on("click", reset);
+        
+      // On mouseover tooltip
+      var tooltip = d3.select("body")
+        .append("div")
+        .style("position", "absolute")
+        .style("z-index", "10")
+        .style("visibility", "hidden");
 
-svg
-    .call(zoom) // delete this line to disable free zooming
-    .call(zoom.event);
+      // Create the albers projection (to center the UK map correctly)
+      var albersProjection = d3.geo.albers()
+        .center([0, 55.4])
+        .rotate([4.4, 0])
+        .parallels([50, 60])
+        .scale(2800)
+        .translate([width / 2, height / 2]);
+        
+      // Create a function geoPath - it takes a GeoJSON feature and returns SVG path data (SVG path = a shape)
+      var geoPath = d3.geo.path()
+        .projection(albersProjection);
 
-// Display the map	
+      // Create a group to handle all svg elements simultaneously
+      var g = svg.append( "g" );
+      
+      // Add zoom functionality
+      var zoom = d3.behavior.zoom()
+        .translate([0, 0])
+        .scale(1)
+        .scaleExtent([1, 8])
+        .on("zoom", zoomed);  
 
-var color = d3.scale.threshold()
-    .domain([-0.66, -0.33, 0, 0.33, 0.66, 1])
-    .range(["#FF0000", "#FF5500", "#FFAA00", "#FFFF00", "#CCFF00", "#88FF00", "#00FF00"]);
+      svg
+        .call(zoom) // delete this line to disable free zooming
+        .call(zoom.event);
 
-queue()
-  .defer(d3.json, "GBR_adm2geo.json")
-  .defer(d3.csv, "MapData.csv")
-  .await(ready);
-  
-function ready(error, UK_json, MapData) {
-  if (error) throw error;
-  
-  var rateById = {};
+      // Create a function which returns a colour based on sentiment values
+      var color = d3.scale.threshold()
+        .domain([-0.66, -0.33, 0.33, 0.66, 1])
+        .range(["#FF0033", "#FF6000", "#FFFF00", "#B0FF00", "#80FF00", "#00FF00"]);
+        
+      // Queue allows handling of multiple files within the same function ("ready" - below)
+      queue()
+        .defer(d3.json, "GBR_adm2geo.json")
+        .defer(d3.csv, "MapData.csv")
+        .await(ready);
 
-  MapData.forEach(function(d) { rateById[d.id] = +d.sentiment; });
+      // Display the map  
+      function ready(error, UK_json, MapData) {
+        if (error) throw error;
+        
+        var sentimentById = {}; // Array stores sentiment data
+        MapData.forEach(function(d) { sentimentById[d.id] = +d.sentiment; }); // Bind the sentiment data from MapData to sentimentById
 
-  g.selectAll( "path" ) // Select all SVG path elements - everything in the chain below happens to the elements. Since the elements don't exist, they are created on the fly.
-  .data( UK_json.features ) // Binds the data to the page elements 
-  .enter() // Creates a new element
-  .append( "path" )
-  .attr( "d", geoPath ) // For SVGs - d defines the coordinates of a path, geoPath is a function
-  .attr("class", "feature")
-  .attr("fill", function(d,i) { return color(rateById[i+1]); })
-  .on("click", clicked)
-  .on("mouseover", function(d,i){return mouseover(UK_json.features[i].properties.NAME_2 + ": " + rateById[i+1]);})
-  .on("mousemove", function(){return tooltip.style("top", (d3.event.pageY-10)+"px").style("left",(d3.event.pageX+10)+"px");}) // Position of the tooltip
-  .on("mouseout", function(){return tooltip.style("visibility", "hidden");});
+        g.selectAll( "path" )   // Select all SVG path elements - since the elements don't exist yet, they are created on the fly.
+        .data( UK_json.features ) // Binds the geoJSON data to the page elements 
+        .enter()          // Creates a new element
+        .append( "path" )
+        .attr( "d", geoPath )   // For SVGs - d defines the coordinates of a path. geoPath is a function which returns an SVG path
+        .attr("class", "feature") // For CSS click and mouseover styling
+        .attr("fill", function(d,i) { return color(sentimentById[i+1]); })  // Paint region (cf color function)
+        .on("click", clicked)   // Zoom on click (cf clicked function)
+        .on("mouseover", function(d,i){return tooltip.style("visibility", "visible"), 
+                         tooltip.text(UK_json.features[i].properties.NAME_2 + ": " + sentimentById[i+1]);}) // Show region tooltip 
+        .on("mousemove", function(){return tooltip.style("top", (d3.event.pageY-10)+"px").style("left",(d3.event.pageX+10)+"px");}) // Position of the tooltip
+        .on("mouseout", function(){return tooltip.style("visibility", "hidden");}); // Hide tooltip
 
-  g.append("path")
-  .datum(UK_json.features)
-  .attr("class", "mesh")
-  .attr("d", geoPath)
-	  
-};
+      };
 
-function mouseover(name){
-  return tooltip.style("visibility", "visible"), tooltip.text(name);
-}
+      // Zoom on click
+      function clicked(d) {
+        if (active.node() === this) return reset();
+        active.classed("active", false);
+        active = d3.select(this).classed("active", true);
 
+        var bounds = geoPath.bounds(d),
+          dx = bounds[1][0] - bounds[0][0],
+          dy = bounds[1][1] - bounds[0][1],
+          x = (bounds[0][0] + bounds[1][0]) / 2,
+          y = (bounds[0][1] + bounds[1][1]) / 2,
+          scale = Math.max(1, Math.min(8, 0.9 / Math.max(dx / width, dy / height))),
+          translate = [width / 2 - scale * x, height / 2 - scale * y];
 
-// Zoom on click
-function clicked(d) {
-  if (active.node() === this) return reset();
-  active.classed("active", false);
-  active = d3.select(this).classed("active", true);
+        svg.transition()
+          .duration(750)
+          .call(zoom.translate(translate).scale(scale).event);
+      }
 
-  var bounds = geoPath.bounds(d),
-	  dx = bounds[1][0] - bounds[0][0],
-	  dy = bounds[1][1] - bounds[0][1],
-	  x = (bounds[0][0] + bounds[1][0]) / 2,
-	  y = (bounds[0][1] + bounds[1][1]) / 2,
-	  scale = Math.max(1, Math.min(8, 0.9 / Math.max(dx / width, dy / height))),
-	  translate = [width / 2 - scale * x, height / 2 - scale * y];
+      // To reset the map to fullscreen
+      function reset() {
+        active.classed("active", false);
+        active = d3.select(null);
 
-  svg.transition()
-	  .duration(750)
-	  .call(zoom.translate(translate).scale(scale).event);
-}
+        svg.transition()
+          .duration(750)
+          .call(zoom.translate([0, 0]).scale(1).event);
+      }
 
-// To reset the map to fullscreen
-function reset() {
-  active.classed("active", false);
-  active = d3.select(null);
+      function zoomed() {
+        g.style("stroke-width", 1.5 / d3.event.scale + "px");
+        g.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+      }
+    }
 
-  svg.transition()
-	  .duration(750)
-	  .call(zoom.translate([0, 0]).scale(1).event);
-}
-
-function zoomed() {
-  g.style("stroke-width", 1.5 / d3.event.scale + "px");
-  g.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
-}
-
-// If the drag behavior prevents the default click,
-// also stop propagation so we don’t click-to-zoom.
-function stopped() {
-  if (d3.event.defaultPrevented) d3.event.stopPropagation();
-}
-
-  </script>
+    function topicsInit(){
+      /*
+      svg.append("rect")
+        .attr("class", "button")
+        .attr("fill", "gray")
+        .attr("width", 100)
+        .attr("height", 200);
+        */
+    }
+    
+    $("*").dblclick(function (event)
+    {
+    event.preventDefault();
+    });
+    </script>
+  </div>
+</div>
 </body>
+
+<footer><p> Copyright &copy; University of Bristol</p></footer>
+
 </html>
